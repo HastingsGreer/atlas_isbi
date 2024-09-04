@@ -63,30 +63,72 @@ For all approaches, we measure dice of tibial and femoral cartilage through thei
 ANTs:
 ANTs is packaged with an atlas building script. We 
 
+\section{Atlas building}
+
+We begin with an average of all images as the atlas, and then cycle:
+
+Warp all images to the atlas
+
+average
+
+warp the atlas by the average transform back to the images
+
+The result is that the expected warp from any pixel in the atlas is zero.
+
+\section{UniGradICON with affine pre-registration}
+
+uniGradICON is a convenient deep registration tool that does not require new training, but it does not provide separate affine and deformable components of the deformation field. We use unigradICON to compute a transform decomposed into an affine and deformable component as follows:
+
+Registration algorithms $\Phi$ (uniGradICON, pretrained) and 
+
+$$\Psi_\theta[I^A, I^B](x) = exp(\theta - \theta^T)[x^T 1]^T$$ (rigid)
+$$\Psi_\theta[I^A, I^B](x) = exp(\theta)[x^T 1]^T$$ (deformable)
+
+(note that to begin with, $\Psi_\theta$ does not depend on $I^A and I^B$
+
+Then, we find
+
+$$ \theta = \text{argmin}_\theta \text{LNCC}(I^A \circ \text{TwoStep}\{\Psi_\theta, \Phi\}[I^A, I^B], I^B) $$
+
+This decomposes the transform into affine and deformable components.  
+
 
 \begin{figure}[htb]
 
 \begin{minipage}[b]{1.0\linewidth}
   \centering
-  \centerline{\includegraphics[width=8.5cm]{example-image}}
+  \centerline{\includegraphics[width=8.5cm]{knee_affine-31/003_.png}}
 %  \vspace{2.0cm}
-  \centerline{(a) Result 1}\medskip
+  \centerline{(a) Overall deformation}\medskip
 \end{minipage}
 %
 \begin{minipage}[b]{.48\linewidth}
   \centering
-  \centerline{\includegraphics[width=4.0cm]{example-image}}
+  \centerline{\includegraphics[width=4.0cm]{knee_affine-31/006_.png}}
 %  \vspace{1.5cm}
-  \centerline{(b) Results 3}\medskip
+  \centerline{(b) Moving image}\medskip
 \end{minipage}
 \hfill
 \begin{minipage}[b]{0.48\linewidth}
   \centering
-  \centerline{\includegraphics[width=4.0cm]{example-image}}
+  \centerline{\includegraphics[width=4.0cm]{knee_affine-31/007_.png}}
 %  \vspace{1.5cm}
-  \centerline{(c) Result 4}\medskip
+  \centerline{Fixed Image}\medskip
 \end{minipage}
 %
+\begin{minipage}[b]{.48\linewidth}
+  \centering
+  \centerline{\includegraphics[width=4.0cm]{knee_affine-31/004_.png}}
+%  \vspace{1.5cm}
+  \centerline{(b) affine alignment}\medskip
+\end{minipage}
+\hfill
+\begin{minipage}[b]{0.48\linewidth}
+  \centering
+  \centerline{\includegraphics[width=4.0cm]{knee_affine-31/005_.png}}
+%  \vspace{1.5cm}
+  \centerline{(c) affine component of deformation}\medskip
+\end{minipage}
 \caption{Example of placing a figure with experimental results.}
 \label{fig:res}
 %

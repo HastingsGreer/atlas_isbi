@@ -1,0 +1,148 @@
+Command:
+affine_unigradicon.py
+System:
+biag-w05.cs.unc.edu
+Python:
+/playpen-raid1/tgreer/atlas_isbi/venv/bin/python
+Git Hash:
+0febbaa
+https://github.com/hastingsgreer/atlas_isbi/tree/0febbaa
+Uncommitted changes:
+diff --git a/affine_unigradicon.py b/affine_unigradicon.py
+index 8b13789..5f4a440 100644
+--- a/affine_unigradicon.py
++++ b/affine_unigradicon.py
+@@ -1 +1,131 @@
++import unigradicon
++import utils
++from icon_registration import losses
++import torch
++import torch.nn.functional as F
++import icon_registration as icon
++import itk
++import numpy as np
++import matplotlib.pyplot as plt
++import footsteps
+ 
++
++class RigidParameterNet(icon.RegistrationModule):
++    def __init__(self):
++        super().__init__()
++        self.angle = torch.nn.Parameter(torch.zeros(4, 4).float())
++    def forward(self, A, B):
++        def warp(coords):
++            coords = coords - .5
++            coords = torch.cat([coords, torch.ones(coords.shape[0], 1, coords.shape[2], coords.shape[3], coords.shape[4], device=A.device)], axis=1)
++            coords = torch.einsum("bfxyz,of->boxyz", coords, torch.linalg.matrix_exp(self.angle - torch.tensor([[1, 1, 1, 0]] * 3 + [[0] * 4], device=A.device)* torch.permute(self.angle, [1, 0])))
++            return coords[:, :3] + .5
++        return warp
++    def set_angle(self, theta):
++        with torch.no_grad():
++            self.angle = torch.nn.Parameter(torch.zeros(4, 4).float())
++            self.angle[1, 2] = theta
++            self.angle[2, 1] = -theta
++class AffineParameterNet(icon.RegistrationModule):
++    def __init__(self):
++        super().__init__()
++        self.angle = torch.nn.Parameter(torch.zeros(4, 4).float())
++    def forward(self, A, B):
++        def warp(coords):
++            coords = coords - .5
++            coords = torch.cat([coords, torch.ones(coords.shape[0], 1, coords.shape[2], coords.shape[3], coords.shape[4], device=A.device)], axis=1)
++            coords = torch.einsum("bfxyz,of->boxyz", coords, torch.linalg.matrix_exp(self.angle))
++            return coords[:, :3] + .5
++        return warp
++    def set_angle(self, theta):
++        with torch.no_grad():
++            self.angle = torch.nn.Parameter(torch.zeros(4, 4).float())
++            self.angle[1, 2] = theta
++            self.angle[2, 1] = -theta
++
++
++def preprocess(img, type="ct"):
++  if type == "ct":
++    clamp = [-1000, 1000]
++    img = (torch.clamp(img, clamp[0], clamp[1]) - clamp[0])/(clamp[1]-clamp[0])
++    return F.interpolate(img, [175, 175, 175], mode="trilinear", align_corners=False)
++  elif type == "mri":
++    im_min, im_max = torch.min(img), torch.max(img)
++    img = torch.clip(img, im_min, im_max)
++    img = (img-im_min) / (im_max-im_min)
++    return F.interpolate(img, [175, 175, 175], mode="trilinear", align_corners=False)
++  else:
++    print(f"Error: Do not support the type {type}")
++    return img
++#target = itk.imread("sample_data/RegLib_C01_1.nrrd")
++#source = itk.imread("sample_data/RegLib_C01_2.nrrd")
++
++target = itk.imread("sample_data/9821241_20080616_SAG_3D_DESS_RIGHT_12394103_image.nii.gz")
++source = itk.imread("sample_data/9991313_20050623_SAG_3D_DESS_RIGHT_10564014_image.nii.gz")
++
++target = preprocess(torch.Tensor(itk.GetArrayFromImage(target)).unsqueeze(0).unsqueeze(0), type="mri")
++source = preprocess(torch.Tensor(itk.GetArrayFromImage(source)).unsqueeze(0).unsqueeze(0), type="mri") 
++
++
++
++def optim(net, params, A, B):
++    net.assign_identity_map(A.shape)
++    net.cuda()
++    A = A.cuda() 
++    B = B.cuda()
++    o = torch.optim.Adam(params, lr=0.02)
++    for i in range(8):
++        print(params[0])
++        for j in range(10):
++            o.zero_grad()
++            loss = net(A, B)
++            
++            loss.all_loss.backward()
++            o.step()
++
++#Rotate source irreversibly
++net = icon.losses.BendingEnergyNet(AffineParameterNet(), icon.LNCC(5), 0)
++net.regis_net.set_angle(.4)
++net.assign_identity_map(target.shape)
++
++net(source, target)
++source = net.warped_image_A.detach()
++
++if False:
++    net = icon.losses.BendingEnergyNet(AffineParameterNet(), icon.LNCC(5), 0)
++    #net.regis_net.set_angle(.4)
++    params = list(net.parameters())
++
++else:
++    net = unigradicon.get_unigradicon()
++    affine = RigidParameterNet()
++    #affine.set_angle(.4)
++    net = icon.losses.BendingEnergyNet(
++        icon.TwoStepRegistration(affine, net.regis_net)
++            , icon.LNCC(5), 0)
++    params = list(affine.parameters())
++
++
++
++net.assign_identity_map(target.shape)
++net.cuda()
++
++net(source.cuda(), target.cuda())
++
++utils.show(net.warped_image_A - target.cuda())
++utils.warplines(net.phi_AB_vectorfield)
++
++optim(net, params, source, target)
++
++utils.show(net.warped_image_A - target.cuda())
++utils.warplines(net.phi_AB_vectorfield)
++
++net.regis_net = affine
++net.assign_identity_map(target.shape)
++net.cuda()
++net(source.cuda(), target.cuda())
++
++utils.show(net.warped_image_A - target.cuda())
++utils.warplines(net.phi_AB_vectorfield)
++
++Ri
+Current working dir:
+/playpen-raid1/tgreer/atlas_isbi

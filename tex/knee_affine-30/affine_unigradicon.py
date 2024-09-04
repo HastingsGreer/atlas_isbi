@@ -128,5 +128,4 @@ net(source.cuda(), target.cuda())
 utils.show(net.warped_image_A - target.cuda())
 utils.warplines(net.phi_AB_vectorfield)
 
-utils.show(source)
-utils.show(target)
+Ri
